@@ -1,0 +1,25 @@
+Tracerlib is a set of utilities to make tracing Python code easier.
+
+It provides ``TracerManager``, which can allow multiple trace functions to
+coexist. It can easily be enabled and disabled, either manually or as a
+context manager in a with statement.
+
+``Tracer`` classes make handling the different trace events much easier.
+
+::
+
+    class TraceExceptions(Trace):
+        def trace_exception(self, func_name, exctype, value, tb):
+            print "Saw an exception: %r" % (value,)
+
+And, a helper class ``FrameInspector`` which wraps a frame and makes it
+trivial to inspect the function name and arguments the function had been
+called with.
+
+::
+
+    inspector = FrameInspector(sys._getframe())
+
+    print "Called", inspector.func_name
+    print "args:", inspector.args
+    print "kwargs:", inspector.kwargs

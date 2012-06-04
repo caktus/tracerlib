@@ -37,6 +37,7 @@ import traceback
 def _global_tracer(frame, event, arg):
     for tm in TracerManager._active_managers:
         tm._trace(frame, event, arg)
+    return _global_tracer
 
 def _start_tracing():
     sys.settrace(_global_tracer)
@@ -71,12 +72,11 @@ class TracerManager(object):
                 except BaseException as e:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
                     print("Failed tracer %r" % (tracer,), file=sys.stderr)
-                    traceback.print_tb(exc_traceback)
+                    traceback.print_exc()
                     drop.append(i)
         drop.reverse()
         for i in drop:
             del self.tracers[i]
-        return self._trace
 
     def start(self):
         self._active_managers.append(self)
@@ -145,8 +145,7 @@ class Tracer(object):
 
     def __init__(self, func=None, events=None):
         self.events = None
-        if func is not None:
-            self._trace = func
+        self._trace = func
 
     def __call__(self, frame, event, arg):
         if self.events is None or event in self.events:
@@ -156,11 +155,18 @@ class Tracer(object):
             if self._trace is not None:
                 self._trace(func_name, fi.args, fi.kwargs)
             elif event == 'exception':
-                self.trace_exception(func, fi.args, fi.kwargs, *args)
+                self.trace_exception(func_name, fi.args, fi.kwargs, *args)
+            elif event == 'line':
+                self.trace_line(func_name, arg)
+            elif event == 'return':
+                self.trace_return(func_name, arg)
+            elif event == 'call':
+                self.trace_call(func_name, fi, fi.args, fi.kwargs)
             else:
                 getattr(self, 'trace_' + event)(func_name, fi.args, fi.kwargs)
+        return self
 
-    def trace_call(self, func_name, args, kwargs):
+    def trace_call(self, func_name, inspector, args, kwargs):
         pass
 
     def trace_line(self, func_name, line_no):
@@ -180,3 +186,81 @@ class Tracer(object):
 
     def trace_c_exception(self, func_name):
         pass
+
+
+class StackTracer(Tracer):
+
+    def __init__(self, out=None):
+        super(StackTracer, self).__init__()
+        self.call_stack = []
+        self.out = None
+
+    @property
+    def current(self):
+        return self.call_stack[-1]
+
+    @property
+    def depth(self):
+        return len(self.call_stack)
+
+    def report_call(self, func_name, args, kwargs):
+        p = []
+        def a(s):
+            if isinstance(s, basestring):
+                p.append(s)
+            else:
+                p.append(repr(s))
+
+        a(' ' * (self.depth - 1))
+        a(func_name)
+        a('(')
+        for i, arg in enumerate(args):
+            if i > 0:
+                a(', ')
+            a(arg)
+        if args and kwargs:
+            a(', ')
+        for i, (k, v) in enumerate(kwargs.items()):
+            a(k)
+            a('=')
+            a(v)
+        a(')')
+
+        print(''.join(p), file=self.out)
+
+    def trace_call(self, func_name, inspector, args, kwargs):
+        cft = StackFrameTracer(func_name, inspector, args, kwargs)
+        self.call_stack.append(cft)
+        self.report_call(func_name, args, kwargs)
+
+    def trace_line(self, *args, **kwargs):
+        self.current.trace_line(*args, **kwargs)
+
+    def trace_return(self, func_name, return_value):
+        self.current.trace_return(func_name, return_value)
+        if self.call_stack:
+            print(' ' * (self.depth - 1), func_name, '() == ', repr(return_value), sep='', file=self.out)
+            self.call_stack.pop()
+
+    def trace_exception(self, *args, **kwargs):
+        self.current.trace_exception(*args, **kwargs)
+
+
+class StackFrameTracer(Tracer):
+
+    def __init__(self, func_name, inspector, args, kwargs):
+        super(StackFrameTracer, self).__init__()
+        self.func_name = func_name
+        self.inspector = inspector
+        self.args = args
+        self.kwargs = kwargs
+        self.lineno = None
+
+    def trace_line(self, func_name, lineno):
+        self.lineno = lineno
+
+    def trace_return(self, func_name, return_value):
+        self.return_value = return_value
+
+    def trace_exception(self, func_name, exctype, value, tb):
+        self.exc_info = (exctype, value, tb)

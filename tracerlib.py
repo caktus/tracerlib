@@ -188,7 +188,29 @@ class Tracer(object):
         pass
 
 
+class StackFrameTracer(Tracer):
+
+    def __init__(self, func_name, inspector, args, kwargs):
+        super(StackFrameTracer, self).__init__()
+        self.func_name = func_name
+        self.inspector = inspector
+        self.args = args
+        self.kwargs = kwargs
+        self.lineno = None
+
+    def trace_line(self, func_name, lineno):
+        self.lineno = lineno
+
+    def trace_return(self, func_name, return_value):
+        self.return_value = return_value
+
+    def trace_exception(self, func_name, exctype, value, tb):
+        self.exc_info = (exctype, value, tb)
+
+
 class StackTracer(Tracer):
+
+    frame_tracer = StackFrameTracer
 
     def __init__(self, out=None):
         super(StackTracer, self).__init__()
@@ -229,7 +251,7 @@ class StackTracer(Tracer):
         print(''.join(p), file=self.out)
 
     def trace_call(self, func_name, inspector, args, kwargs):
-        cft = StackFrameTracer(func_name, inspector, args, kwargs)
+        cft = self.frame_tracer(func_name, inspector, args, kwargs)
         self.call_stack.append(cft)
         self.report_call(func_name, args, kwargs)
 
@@ -244,23 +266,3 @@ class StackTracer(Tracer):
 
     def trace_exception(self, *args, **kwargs):
         self.current.trace_exception(*args, **kwargs)
-
-
-class StackFrameTracer(Tracer):
-
-    def __init__(self, func_name, inspector, args, kwargs):
-        super(StackFrameTracer, self).__init__()
-        self.func_name = func_name
-        self.inspector = inspector
-        self.args = args
-        self.kwargs = kwargs
-        self.lineno = None
-
-    def trace_line(self, func_name, lineno):
-        self.lineno = lineno
-
-    def trace_return(self, func_name, return_value):
-        self.return_value = return_value
-
-    def trace_exception(self, func_name, exctype, value, tb):
-        self.exc_info = (exctype, value, tb)

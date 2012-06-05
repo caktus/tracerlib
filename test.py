@@ -4,6 +4,8 @@ import collections
 
 import tracerlib
 
+import testmod
+
 
 def foobar(x, *args, **kwargs):
     return sys._getframe()
@@ -33,6 +35,14 @@ class FrameInspectorTestCase(unittest.TestCase):
         self.assertEqual(args['x'], 1)
         self.assertEqual(args['*args'], (2,))
         self.assertEqual(args['**kwargs'], {'a': 'b'})
+
+    def test_global_func_qual_name(self):
+        q = tracerlib.FrameInspector(testmod.f()).qual_name
+        self.assertEqual('testmod.f', q)
+
+    def test_class_method_qual_name(self):
+        q = tracerlib.FrameInspector(testmod.A().m1()).qual_name
+        self.assertEqual('testmod.A.m1', q)
 
 Record = collections.namedtuple('Record', ['event', 'func_name'])
 

@@ -122,6 +122,39 @@ class FrameInspector(object):
         return self.frame.f_code.co_name
 
     @property
+    def module(self):
+        return inspect.getmodulename(self.frame.f_code.co_filename)
+
+    @property
+    def is_global(self):
+        try:
+            return getattr(sys.modules[self.module], self.func_name).func_code is self.frame.f_code
+        except AttributeError:
+            return False
+
+    @property
+    def qual_name(self):
+        if self.is_global:
+            return '%s.%s' % (self.module, self.func_name)
+        # Try to find a class the function was defined in
+        module = sys.modules[self.module]
+        lineno = self.frame.f_code.co_firstlineno
+        source = inspect.getsourcelines(module)[0]
+        class_ = None
+        def get_indent():
+            return len(source[lineno - 1]) - len(source[lineno - 1].lstrip(' \t'))
+        indent = get_indent()
+        while class_ is None and lineno >= 0:
+            if source[lineno - 1].startswith('class '):
+                class_ = getattr(module, source[lineno - 1].split('class ', 1)[1].rstrip(':\n').split('(')[0])
+                break
+            lineno -= 1
+        else:
+            raise TypeError("Cannot give qualified name for non-globally accessable function.")
+
+        return '%s.%s.%s' % (self.module, class_.__name__, self.func_name)
+
+    @property
     def args(self):
         all_args = self.all_arg_values()
         args = []

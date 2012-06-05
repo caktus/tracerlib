@@ -176,9 +176,15 @@ class FrameInspector(object):
 
 class Tracer(object):
 
-    def __init__(self, func=None, events=None):
+    def __init__(self, func=None, events=None, watch=None):
         self.events = None
         self._trace = func
+        self._watch = []
+        if watch is not None:
+            self._watch.extend(watch)
+
+    def watch(self, path):
+        self._watch.append(path)
 
     def __call__(self, frame, event, arg):
         if self.events is None or event in self.events:

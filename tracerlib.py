@@ -34,6 +34,8 @@ import collections
 import traceback
 
 
+_global_tracer_manager = None
+
 def _global_tracer(frame, event, arg):
     for tm in TracerManager._active_managers:
         tm._trace(frame, event, arg)
@@ -45,9 +47,38 @@ def _start_tracing():
 def _stop_tracing():
     sys.settrace(None)
 
+def addtracer(tracer):
+    """Add a trace function to the global manager."""
+
+    global _global_tracer_manager
+    if _global_tracer_manager is None:
+        _global_tracer_manager = TracerManager()
+    _global_tracer_manager.add(tracer)
+    _global_tracer_manager.start()
+
+def removetracer(tracer):
+    """Remove a trace function frojm the global manager. Disable tracing if no more tracers are active."""
+
+    global _global_tracer_manager
+    if _global_tracer_manager is None:
+        _global_tracer_manager = TracerManager()
+    _global_tracer_manager.remove(tracer)
+    if not _global_tracer_manager.tracers:
+        _global_tracer_manager.stop()
+
 
 class TracerManager(object):
-    """Maintains a stack of tracers to enable and disable."""
+    """Maintains a stack of tracers to enable and disable.
+
+    Can be used as a context manager.
+
+    ::
+
+        with TracerManager(tracer1, tracer2):
+            # some
+            # code
+            # to trace
+    """
 
     _active_managers = []
 
@@ -55,9 +86,13 @@ class TracerManager(object):
         self.tracers = list(tracers)
 
     def add(self, tracer, events=None):
+        """Add a tracer function to be managed."""
+
         self.tracers.append((tracer, events))
 
     def remove(self, tracer):
+        """Remove a tracer function."""
+
         for i, (t, events) in enumerate(self.tracers):
             if t is tracer:
                 del self.tracers[i]
@@ -79,11 +114,16 @@ class TracerManager(object):
             del self.tracers[i]
 
     def start(self):
-        self._active_managers.append(self)
+        """Begin tracing with all the tracers registered."""
+
+        if self not in self._active_managers:
+            self._active_managers.append(self)
         _start_tracing()
     __enter__ = start 
 
     def stop(self):
+        """Stop all the tracers registered with this manager."""
+
         self._active_managers.remove(self)
         if not self._active_managers:
             _stop_tracing()
@@ -99,6 +139,8 @@ def print_call(frame, event, arg):
 
 
 class FrameInspector(object):
+    """Utility class to wrap a frame and introspect it easily."""
+
     def __init__(self, frame):
         self.frame = frame
         self._arg_values = None
@@ -119,14 +161,20 @@ class FrameInspector(object):
 
     @property
     def func_name(self):
+        """The name of the function called."""
+
         return self.frame.f_code.co_name
 
     @property
     def module(self):
+        """The name of the module which defines the function."""
+
         return inspect.getmodulename(self.frame.f_code.co_filename)
 
     @property
     def is_global(self):
+        """If the function is defined module-level."""
+
         try:
             return getattr(sys.modules[self.module], self.func_name).func_code is self.frame.f_code
         except AttributeError:
@@ -134,6 +182,10 @@ class FrameInspector(object):
 
     @property
     def qual_name(self):
+        """If the function is global or a class method, returns the fully
+        qualified name, which can be used to identify the function uniquely.
+        """
+
         if self.is_global:
             return '%s.%s' % (self.module, self.func_name)
         # Try to find a class the function was defined in
@@ -156,6 +208,8 @@ class FrameInspector(object):
 
     @property
     def args(self):
+        """The positional arguments passed to the function."""
+
         all_args = self.all_arg_values()
         args = []
         for (k, v) in all_args.items():
@@ -169,12 +223,40 @@ class FrameInspector(object):
 
     @property
     def kwargs(self):
+        """The keyword arguments passed to the function."""
+
         arginfo = inspect.getargvalues(self.frame)
         L = arginfo.locals
         return L.get(arginfo.keywords, {})
 
 
 class Tracer(object):
+    """Helps handling trace events.
+
+    Can accept a ``func`` argument to use as a standard trace function.
+    The tracing can be conditional, based on the ``events`` and ``watch``
+    parameters it is created with.
+
+    ``event`` can be one of the trace events, and the tracer will only be used
+    when the current event matches one of these. Acceptable events are:
+
+    - call
+    - return
+    - line
+    - exception
+    - c_call
+    - c_return
+    - c_exception
+
+    ``watch`` is a fully qualified name. If given, only functions which match
+    will be traced. If ``watch`` is a path to a module, any function or
+    method in the module will be traced. If it is a path to a class, only
+    methods defined in that class will be traced.
+
+    Rather than passing a function to ``Tracer``, you may subclass it and
+    define one or more of the ``trace_*()`` methods, which are invoked
+    with event-specific arguments.
+    """
 
     def __init__(self, func=None, events=None, watch=None):
         self.events = None
@@ -184,6 +266,8 @@ class Tracer(object):
             self._watch.extend(watch)
 
     def watch(self, path):
+        """Add an additional watch path to match when tracing."""
+
         self._watch.append(path)
 
     def __call__(self, frame, event, arg):
@@ -191,6 +275,14 @@ class Tracer(object):
             self.frame_insp = fi = FrameInspector(frame)
             func_name = fi.func_name
             arginfo = fi.all_arg_values()
+
+            qn_parts = fi.qual_name.split('.')
+            for watch in self._watch:
+                w_parts = watch.split('.')
+                for i,wp in enumerate(w_parts):
+                    if wp != qn_parts[i]:
+                        return
+
             if self._trace is not None:
                 self._trace(func_name, fi.args, fi.kwargs)
             elif event == 'exception':
@@ -206,16 +298,16 @@ class Tracer(object):
         return self
 
     def trace_call(self, func_name, inspector, args, kwargs):
-        pass
+        """Handle a call event. Happens at the start of the called function."""
 
     def trace_line(self, func_name, line_no):
-        pass
+        """Handle a line event."""
 
     def trace_return(self, func_name, return_value):
-        pass
+        """Handle a return event. Happens at the end of the returning function."""
 
     def trace_exception(self, func_name, exctype, value, tb):
-        pass
+        """Handle an exception event."""
 
     def trace_c_call(self, func_name, c_func):
         pass
@@ -228,7 +320,6 @@ class Tracer(object):
 
 
 class StackFrameTracer(Tracer):
-
     def __init__(self, func_name, inspector, args, kwargs):
         super(StackFrameTracer, self).__init__()
         self.func_name = func_name
@@ -248,6 +339,14 @@ class StackFrameTracer(Tracer):
 
 
 class StackTracer(Tracer):
+    """A specialized tracer which watches the entire callstack, and makes it
+    easy to respond and log within it. Can be given an ``out`` file to write
+    an outline of the entire call graph to.
+
+    If subclassing, you can define a ``frame_tracer`` class to a subclass of
+    ``StackFrameTracer`` which is create for each frame of the stack to trace
+    within it.
+    """
 
     frame_tracer = StackFrameTracer
 
@@ -258,13 +357,16 @@ class StackTracer(Tracer):
 
     @property
     def current(self):
+        """The last frame on the stack."""
         return self.call_stack[-1]
 
     @property
     def depth(self):
+        """The current depth of the call stack."""
         return len(self.call_stack)
 
     def report_call(self, func_name, args, kwargs):
+        """Logs a call and its arguments."""
         p = []
         def a(s):
             if isinstance(s, basestring):
@@ -298,6 +400,7 @@ class StackTracer(Tracer):
         self.current.trace_line(*args, **kwargs)
 
     def trace_return(self, func_name, return_value):
+        """Logs the return value at the appropriate level in the graph output."""
         self.current.trace_return(func_name, return_value)
         if self.call_stack:
             print(' ' * (self.depth - 1), func_name, '() == ', repr(return_value), sep='', file=self.out)

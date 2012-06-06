@@ -8,7 +8,7 @@ setup(name='tracerlib',
     author='Calvin Spealman',
     author_email='ironfroggy@gmail.com',
     url='https://github.com/ironfroggy/tracerlib',
-    packages=['straight', 'straight.plugin'],
+    py_modules=['tracerlib'],
     classifiers=[
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 3',

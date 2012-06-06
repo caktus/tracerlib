@@ -176,7 +176,12 @@ class FrameInspector(object):
         """If the function is defined module-level."""
 
         try:
-            return getattr(sys.modules[self.module], self.func_name).func_code is self.frame.f_code
+            module = sys.modules[self.module]
+        except KeyError:
+            module = sys.modules['__main__']
+
+        try:
+            return getattr(module, self.func_name).func_code is self.frame.f_code
         except AttributeError:
             return False
 
@@ -403,7 +408,7 @@ class StackTracer(Tracer):
         """Logs the return value at the appropriate level in the graph output."""
         self.current.trace_return(func_name, return_value)
         if self.call_stack:
-            print(' ' * (self.depth - 1), func_name, '() == ', repr(return_value), sep='', file=self.out)
+            print(' ' * (self.depth - 1), 'return ', repr(return_value), sep='', file=self.out)
             self.call_stack.pop()
 
     def trace_exception(self, *args, **kwargs):

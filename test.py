@@ -65,7 +65,7 @@ class TracerManagerTestCase(unittest.TestCase):
                 j += 1
             if j == i:
                 return rec
-        raise IndexError()
+        raise IndexError("Event %r:%d not in %r" % (event, i, self.records))
 
     def test_start_and_stop(self):
         assert None is sys.gettrace()

@@ -121,8 +121,9 @@ class TracerManager(object):
 
         # We don't need to trace our own exit
         for (tracer, events) in self.tracers:
-            tracer.watch("not:tracerlib.TracerManager.__exit__")
-            tracer.watch("not:tracerlib.TracerManager.stop")
+            if hasattr(tracer, 'watch'):
+                tracer.watch("not:tracerlib.TracerManager.__exit__")
+                tracer.watch("not:tracerlib.TracerManager.stop")
 
         _start_tracing()
     __enter__ = start 
@@ -136,8 +137,9 @@ class TracerManager(object):
 
         # We don't need to trace our own exit
         for (tracer, events) in self.tracers:
-            tracer.unwatch("not:tracerlib.TracerManager.__exit__")
-            tracer.unwatch("not:tracerlib.TracerManager.stop")
+            if hasattr(tracer, 'unwatch'):
+                tracer.unwatch("not:tracerlib.TracerManager.__exit__")
+                tracer.unwatch("not:tracerlib.TracerManager.stop")
 
     def __exit__(self, type_, value, tb):
         self.stop()

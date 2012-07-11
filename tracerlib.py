@@ -118,6 +118,12 @@ class TracerManager(object):
 
         if self not in self._active_managers:
             self._active_managers.append(self)
+
+        # We don't need to trace our own exit
+        for (tracer, events) in self.tracers:
+            tracer.watch("not:tracerlib.TracerManager.__exit__")
+            tracer.watch("not:tracerlib.TracerManager.stop")
+
         _start_tracing()
     __enter__ = start 
 
@@ -127,6 +133,11 @@ class TracerManager(object):
         self._active_managers.remove(self)
         if not self._active_managers:
             _stop_tracing()
+
+        # We don't need to trace our own exit
+        for (tracer, events) in self.tracers:
+            tracer.unwatch("not:tracerlib.TracerManager.__exit__")
+            tracer.unwatch("not:tracerlib.TracerManager.stop")
 
     def __exit__(self, type_, value, tb):
         self.stop()
@@ -271,9 +282,16 @@ class Tracer(object):
             self._watch.extend(watch)
 
     def watch(self, path):
-        """Add an additional watch path to match when tracing."""
+        """Add an additional watch path to match when tracing.
+        
+        package.module.functionname
+        not:XXX
+        """
 
         self._watch.append(path)
+
+    def unwatch(self, path):
+        self._watch.remove(path)
 
     def __call__(self, frame, event, arg):
         if self.events is None or event in self.events:
@@ -283,9 +301,15 @@ class Tracer(object):
 
             qn_parts = fi.qual_name.split('.')
             for watch in self._watch:
-                w_parts = watch.split('.')
-                for i,wp in enumerate(w_parts):
-                    if wp != qn_parts[i]:
+                try:
+                    rule_type, watch = watch.split(':', 1)
+                except IndexError:
+                    rule_type = 'match'
+                if rule_type == 'match':
+                    if watch != fi.qual_name:
+                        return
+                elif rule_type == 'not':
+                    if watch == fi.qual_name:
                         return
 
             if self._trace is not None:

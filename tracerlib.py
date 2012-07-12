@@ -28,17 +28,28 @@
 
 from __future__ import print_function
 
-import sys
+import sys, os
 import inspect
 import collections
 import traceback
 
 
 _global_tracer_manager = None
+_global_env_tracer = False
+
+def _protected_trace_func(func):
+    def _(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            traceback.print_exc()
+            return None
+    return _
 
 def _global_tracer(frame, event, arg):
     for tm in TracerManager._active_managers:
-        tm._trace(frame, event, arg)
+        f = _protected_trace_func(tm._trace)
+        f(frame, event, arg)
     return _global_tracer
 
 def _start_tracing():
@@ -108,7 +119,7 @@ class TracerManager(object):
                     exc_type, exc_value, exc_traceback = sys.exc_info()
                     print("Failed tracer %r" % (tracer,), file=sys.stderr)
                     traceback.print_exc()
-                    drop.append(i)
+                    #drop.append(i)
         drop.reverse()
         for i in drop:
             del self.tracers[i]
@@ -207,22 +218,27 @@ class FrameInspector(object):
         if self.is_global:
             return '%s.%s' % (self.module, self.func_name)
         # Try to find a class the function was defined in
-        module = sys.modules[self.module]
+        module = sys.modules.get(self.module)
         lineno = self.frame.f_code.co_firstlineno
-        source = inspect.getsourcelines(module)[0]
-        class_ = None
-        def get_indent():
-            return len(source[lineno - 1]) - len(source[lineno - 1].lstrip(' \t'))
-        indent = get_indent()
-        while class_ is None and lineno >= 0:
-            if source[lineno - 1].startswith('class '):
-                class_ = getattr(module, source[lineno - 1].split('class ', 1)[1].rstrip(':\n').split('(')[0])
-                break
-            lineno -= 1
+        if module:
+            source = inspect.getsourcelines(module)[0]
+            class_ = None
+            def get_indent():
+                return len(source[lineno - 1]) - len(source[lineno - 1].lstrip(' \t'))
+            indent = get_indent()
+            while class_ is None and lineno >= 0:
+                if source[lineno - 1].startswith('class '):
+                    class_ = getattr(module, source[lineno - 1].split('class ', 1)[1].rstrip(':\n').split('(')[0])
+                    class_name = class_.__name__
+                    break
+                lineno -= 1
+            else:
+                class_name = '<unknown class>'
         else:
-            raise TypeError("Cannot give qualified name for non-globally accessable function.")
+            module = '<unknown module>'
+            class_name = '<unknown class>'
 
-        return '%s.%s.%s' % (self.module, class_.__name__, self.func_name)
+        return '%s.%s.%s' % (self.module, class_name, self.func_name)
 
     @property
     def args(self):
@@ -317,7 +333,7 @@ class Tracer(object):
             if self._trace is not None:
                 self._trace(func_name, fi.args, fi.kwargs)
             elif event == 'exception':
-                self.trace_exception(func_name, fi.args, fi.kwargs, *args)
+                self.trace_exception(func_name, fi.args, fi.kwargs, arg)
             elif event == 'line':
                 self.trace_line(func_name, arg)
             elif event == 'return':
@@ -401,9 +417,17 @@ class StackTracer(Tracer):
         p = []
         def a(s):
             if isinstance(s, basestring):
+                if '\n' in s:
+                    s = s.split('\n', 1)[0] + ' ...'
                 p.append(s)
             else:
-                p.append(repr(s))
+                try:
+                    r = repr(s)
+                except Exception:
+                    r = object.__repr__(s)
+                if '\n' in r:
+                    r = r.split('\n', 1)[0] + ' ...'
+                p.append(r)
 
         a(' ' * (self.depth - 1))
         a(func_name)
@@ -425,7 +449,7 @@ class StackTracer(Tracer):
     def trace_call(self, func_name, inspector, args, kwargs):
         cft = self.frame_tracer(func_name, inspector, args, kwargs)
         self.call_stack.append(cft)
-        self.report_call(func_name, args, kwargs)
+        self.report_call(inspector.qual_name, args, kwargs)
 
     def trace_line(self, *args, **kwargs):
         self.current.trace_line(*args, **kwargs)
@@ -439,3 +463,19 @@ class StackTracer(Tracer):
 
     def trace_exception(self, *args, **kwargs):
         self.current.trace_exception(*args, **kwargs)
+
+
+_pth = """import sys,tracerlib;tracerlib.addtracer(tracerlib.StackTracer(sys.stderr)) if not tracerlib._global_env_tracer else None;tracerlib._global_env_tracer=True"""
+def main(args):
+    this_env = sys.path[-1]
+    if os.path.split(this_env)[-1] == 'site-packages':
+        pth_path = os.path.join(this_env, 'tracerlib.pth')
+        if args and args[-1] == '-r':
+            os.unlink(pth_path)
+        else:
+            with open(pth_path, 'w') as f:
+                f.write(_pth)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

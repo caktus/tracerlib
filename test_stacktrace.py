@@ -19,5 +19,5 @@ tm = TracerManager()
 st = StackTracer(sys.stderr)
 tm.add(st)
 
-with tm:
-    g(-5, 4)
+#with tm:
+#    g(-5, 4)

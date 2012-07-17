@@ -470,11 +470,18 @@ def main(args):
     this_env = sys.path[-1]
     if os.path.split(this_env)[-1] == 'site-packages':
         pth_path = os.path.join(this_env, 'tracerlib.pth')
-        if args and args[-1] == '-r':
-            os.unlink(pth_path)
-        else:
-            with open(pth_path, 'w') as f:
-                f.write(_pth)
+        if args:
+            cmd = args[-1]
+            if cmd == 'off':
+                os.unlink(pth_path)
+            elif cmd == 'on':
+                with open(pth_path, 'w') as f:
+                    f.write(_pth)
+            else:
+                print("Tracerlib commands:")
+                print()
+                print("on: Enable tracing of this virtual environment")
+                print("off: Disable tracing of this virtual environment")
 
 
 if __name__ == '__main__':

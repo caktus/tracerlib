@@ -138,9 +138,25 @@ class TracerTestCase(unittest.TestCase):
             testmod.f()
         self.assertEqual(0, self.mock.call_count)
 
+        self.mock.reset_mock()
+
+        a = testmod.A()
         with self.tm:
-            testmod.A().m1()
+            a.m1()
         self.assertNotEqual(0, self.mock.call_count)
+
+    def test_watch_not(self):
+        self.tracer.watch("-testmod.A.*")
+        with self.tm:
+            testmod.f()
+        self.assertNotEqual(0, self.mock.call_count)
+
+        self.mock.reset_mock()
+
+        a = testmod.A()
+        with self.tm:
+            a.m1()
+        self.assertEqual(0, self.mock.call_count)
 
 if __name__ == '__main__':
     unittest.main()

@@ -134,8 +134,8 @@ class TracerManager(object):
         # We don't need to trace our own exit
         for (tracer, events) in self.tracers:
             if hasattr(tracer, 'watch'):
-                tracer.watch("not:tracerlib.TracerManager.__exit__")
-                tracer.watch("not:tracerlib.TracerManager.stop")
+                tracer.watch("-match:tracerlib.TracerManager.__exit__")
+                tracer.watch("-match:tracerlib.TracerManager.stop")
 
         _start_tracing()
     __enter__ = start 
@@ -150,8 +150,8 @@ class TracerManager(object):
         # We don't need to trace our own exit
         for (tracer, events) in self.tracers:
             if hasattr(tracer, 'unwatch'):
-                tracer.unwatch("not:tracerlib.TracerManager.__exit__")
-                tracer.unwatch("not:tracerlib.TracerManager.stop")
+                tracer.unwatch("-match:tracerlib.TracerManager.__exit__")
+                tracer.unwatch("-match:tracerlib.TracerManager.stop")
 
     def __exit__(self, type_, value, tb):
         self.stop()
@@ -319,8 +319,11 @@ class Tracer(object):
             arginfo = fi.all_arg_values()
 
             qn_parts = fi.qual_name.split('.')
-            failed = False
+            successes = 0
             for watch in self._watch:
+                failed = False
+                negate = watch[0] == '-'
+                watch = watch[1 if negate else 0:]
                 try:
                     rule_type, watch = watch.split(':', 1)
                 except ValueError:
@@ -331,21 +334,28 @@ class Tracer(object):
                     elif watch != fi.qual_name:
                         failed = True
 
-                if failed:
-                    return
+                if negate:
+                    failed = not failed
 
-            if self._trace is not None:
-                self._trace(func_name, fi.args, fi.kwargs)
-            elif event == 'exception':
-                self.trace_exception(func_name, fi.args, fi.kwargs, arg)
-            elif event == 'line':
-                self.trace_line(func_name, arg)
-            elif event == 'return':
-                self.trace_return(func_name, arg)
-            elif event == 'call':
-                self.trace_call(func_name, fi, fi.args, fi.kwargs)
-            else:
-                getattr(self, 'trace_' + event)(func_name, fi.args, fi.kwargs)
+                #if fi.qual_name.startswith('testmod'):
+                #    print(rule_type, ('-' if negate else '+') + watch, fi.qual_name, 'failed' if failed else 'passed')
+
+                if not failed:
+                    successes += 1
+
+            if successes == len(self._watch):
+                if self._trace is not None:
+                    self._trace(func_name, fi.args, fi.kwargs)
+                elif event == 'exception':
+                    self.trace_exception(func_name, fi.args, fi.kwargs, arg)
+                elif event == 'line':
+                    self.trace_line(func_name, arg)
+                elif event == 'return':
+                    self.trace_return(func_name, arg)
+                elif event == 'call':
+                    self.trace_call(func_name, fi, fi.args, fi.kwargs)
+                else:
+                    getattr(self, 'trace_' + event)(func_name, fi.args, fi.kwargs)
         return self
 
     def trace_call(self, func_name, inspector, args, kwargs):

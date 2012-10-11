@@ -36,6 +36,7 @@ import traceback
 
 _global_tracer_manager = None
 _global_env_tracer = False
+_active_managers = []
 
 def _protected_trace_func(func):
     def _(*args, **kwargs):
@@ -47,9 +48,11 @@ def _protected_trace_func(func):
     return _
 
 def _global_tracer(frame, event, arg):
-    for tm in TracerManager._active_managers:
-        f = _protected_trace_func(tm._trace)
-        f(frame, event, arg)
+    # Can be None during termination
+    if _active_managers:
+        for tm in _active_managers:
+            f = _protected_trace_func(tm._trace)
+            f(frame, event, arg)
     return _global_tracer
 
 def _start_tracing():
@@ -91,8 +94,6 @@ class TracerManager(object):
             # to trace
     """
 
-    _active_managers = []
-
     def __init__(self, *tracers):
         self.tracers = list(tracers)
 
@@ -127,8 +128,8 @@ class TracerManager(object):
     def start(self):
         """Begin tracing with all the tracers registered."""
 
-        if self not in self._active_managers:
-            self._active_managers.append(self)
+        if self not in _active_managers:
+            _active_managers.append(self)
 
         # We don't need to trace our own exit
         for (tracer, events) in self.tracers:
@@ -142,8 +143,8 @@ class TracerManager(object):
     def stop(self):
         """Stop all the tracers registered with this manager."""
 
-        self._active_managers.remove(self)
-        if not self._active_managers:
+        _active_managers.remove(self)
+        if not _active_managers:
             _stop_tracing()
 
         # We don't need to trace our own exit

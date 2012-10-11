@@ -322,9 +322,10 @@ class Tracer(object):
             for watch in self._watch:
                 try:
                     rule_type, watch = watch.split(':', 1)
-                except IndexError:
+                except ValueError:
                     rule_type = 'match'
                 if rule_type == 'match':
+                    print ('match?', watch, fi.qual_name)
                     if watch != fi.qual_name:
                         return
                 elif rule_type == 'not':

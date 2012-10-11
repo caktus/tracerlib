@@ -2,6 +2,8 @@ import sys
 import unittest
 import collections
 
+import mock
+
 import tracerlib
 
 import testmod
@@ -70,7 +72,7 @@ class TracerManagerTestCase(unittest.TestCase):
     def test_start_and_stop(self):
         assert None is sys.gettrace()
         self.tm.start()
-        self.assertIn(self.tm, self.tm._active_managers)
+        self.assertIn(self.tm, tracerlib._active_managers)
         self.assertEqual(tracerlib._global_tracer, sys.gettrace())
         self.tm.stop()
         assert None is sys.gettrace()
@@ -78,7 +80,7 @@ class TracerManagerTestCase(unittest.TestCase):
     def test_context_manager(self):
         assert None is sys.gettrace()
         with self.tm:
-            self.assertIn(self.tm, self.tm._active_managers)
+            self.assertIn(self.tm, tracerlib._active_managers)
             self.assertEqual(tracerlib._global_tracer, sys.gettrace())
         assert None is sys.gettrace()
 
@@ -87,13 +89,13 @@ class TracerManagerTestCase(unittest.TestCase):
         tm2 = tracerlib.TracerManager()
         with tm:
             with tm2:
-                self.assertEqual(2, len(self.tm._active_managers))
-                self.assertIn(tm, self.tm._active_managers)
-                self.assertIn(tm2, self.tm._active_managers)
+                self.assertEqual(2, len(tracerlib._active_managers))
+                self.assertIn(tm, tracerlib._active_managers)
+                self.assertIn(tm2, tracerlib._active_managers)
                 self.assertEqual(tracerlib._global_tracer, sys.gettrace())
-            self.assertEqual(1, len(self.tm._active_managers))
+            self.assertEqual(1, len(tracerlib._active_managers))
             self.assertEqual(tracerlib._global_tracer, sys.gettrace())
-        self.assertEqual(0, len(self.tm._active_managers))
+        self.assertEqual(0, len(tracerlib._active_managers))
         self.assertEqual(None, sys.gettrace())
 
     def test_trace(self):
@@ -109,6 +111,26 @@ class TracerManagerTestCase(unittest.TestCase):
         self.assertEqual('g', self.get_record('call', 1).func_name)
         self.assertEqual('f', self.get_record('call', 2).func_name)
 
+
+class TracerTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.tm = tracerlib.TracerManager()
+        self.mock = mock.Mock()
+        self.tracer = tracerlib.Tracer(self.mock)
+        self.tm.add(self.tracer)
+
+    def test_watch_match(self):
+        self.tracer.watch("no_mod")
+        with self.tm:
+            testmod.f()
+        self.assertEqual(0, self.mock.call_count)
+
+        self.tracer.unwatch("no_mod")
+        self.tracer.watch("testmod.f")
+        with self.tm:
+            testmod.f()
+        self.assertNotEqual(0, self.mock.call_count)
 
 if __name__ == '__main__':
     unittest.main()

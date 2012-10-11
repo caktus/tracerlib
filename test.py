@@ -132,5 +132,15 @@ class TracerTestCase(unittest.TestCase):
             testmod.f()
         self.assertNotEqual(0, self.mock.call_count)
 
+    def test_watch_match_wildcard(self):
+        self.tracer.watch("testmod.A.*")
+        with self.tm:
+            testmod.f()
+        self.assertEqual(0, self.mock.call_count)
+
+        with self.tm:
+            testmod.A().m1()
+        self.assertNotEqual(0, self.mock.call_count)
+
 if __name__ == '__main__':
     unittest.main()

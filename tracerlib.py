@@ -319,18 +319,20 @@ class Tracer(object):
             arginfo = fi.all_arg_values()
 
             qn_parts = fi.qual_name.split('.')
+            failed = False
             for watch in self._watch:
                 try:
                     rule_type, watch = watch.split(':', 1)
                 except ValueError:
                     rule_type = 'match'
                 if rule_type == 'match':
-                    print ('match?', watch, fi.qual_name)
-                    if watch != fi.qual_name:
-                        return
-                elif rule_type == 'not':
-                    if watch == fi.qual_name:
-                        return
+                    if watch.endswith('.*'):
+                        failed = not fi.qual_name.startswith(watch[:-2])
+                    elif watch != fi.qual_name:
+                        failed = True
+
+                if failed:
+                    return
 
             if self._trace is not None:
                 self._trace(func_name, fi.args, fi.kwargs)

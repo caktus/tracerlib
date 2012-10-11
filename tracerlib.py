@@ -313,6 +313,7 @@ class Tracer(object):
         self._watch.remove(path)
 
     def __call__(self, frame, event, arg):
+        lineno = frame.f_lineno
         if self.events is None or event in self.events:
             self.frame_insp = fi = FrameInspector(frame)
             func_name = fi.func_name
@@ -333,6 +334,8 @@ class Tracer(object):
                         failed = not fi.qual_name.startswith(watch[:-2])
                     elif watch != fi.qual_name:
                         failed = True
+                elif rule_type == 'line' and event == 'line':
+                    failed = lineno != int(watch)
 
                 if negate:
                     failed = not failed
@@ -349,7 +352,7 @@ class Tracer(object):
                 elif event == 'exception':
                     self.trace_exception(func_name, fi.args, fi.kwargs, arg)
                 elif event == 'line':
-                    self.trace_line(func_name, arg)
+                    self.trace_line(func_name, lineno)
                 elif event == 'return':
                     self.trace_return(func_name, arg)
                 elif event == 'call':

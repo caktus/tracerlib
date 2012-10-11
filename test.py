@@ -158,5 +158,19 @@ class TracerTestCase(unittest.TestCase):
             a.m1()
         self.assertEqual(0, self.mock.call_count)
 
+    def test_watch_line(self):
+        self.tracer.events = ['line']
+        self.tracer.watch('line:5')
+        with self.tm:
+            testmod.l(True)
+        self.assertNotEqual(0, self.mock.call_count)
+
+        self.mock.reset_mock()
+
+        with self.tm:
+            testmod.l(False)
+        self.assertEqual(0, self.mock.call_count)
+
+
 if __name__ == '__main__':
     unittest.main()

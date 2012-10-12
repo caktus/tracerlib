@@ -211,5 +211,87 @@ class TracerTestCase(unittest.TestCase):
             self.assertEqual(1, t.call_count)
 
 
+ONE_BLOCK = """
+foo:1
+bar:2
+"""
+TWO_BLOCK = """
+one
+
+two
+"""
+ONE_CHILD = """
+parent
+    child
+"""
+TWO_CHILD = """
+parent
+    child1
+    child1
+
+    child2
+    child2
+"""
+UNNESTING = """
+top1
+    nest1
+top2
+    nest2
+"""
+
+class ConfigLoaderTestCase(unittest.TestCase):
+    def setUp(self):
+        self.loader = tracerlib.ConfigLoader()
+
+    def test_parse_one_block(self):
+        data = self.loader._parse(ONE_BLOCK)
+
+        self.assertEqual(1, len(data), data)
+        rules, children = data[0]
+        self.assertEqual(2, len(rules), rules)
+        #self.assertEqual(0, len(children), data[0])
+
+    def test_parse_one_child(self):
+        data = self.loader._parse(ONE_CHILD)
+
+        self.assertEqual(1, len(data), data)
+        rules, children = data[0]
+        self.assertEqual(['parent'], rules)
+        child_rules, child_children = children[0]
+        self.assertEqual(['child'], child_rules)
+        self.assertEqual(0, len(child_children))
+
+    def test_parse_multi_blocks(self):
+        data = self.loader._parse(TWO_BLOCK)
+
+        self.assertEqual(2, len(data), data)
+        self.assertEqual(["one"], data[0][0])
+        self.assertEqual(["two"], data[1][0])
+
+    def test_parse_multi_child(self):
+        data = self.loader._parse(TWO_CHILD)
+
+        self.assertEqual(1, len(data), data)
+        rules, children = data[0]
+        self.assertEqual(['parent'], rules)
+        self.assertEqual((['child1', 'child1'], []), children[0])
+        self.assertEqual((['child2', 'child2'], []), children[1])
+
+    def test_parse_unnesting(self):
+        data = self.loader._parse(UNNESTING)
+
+        self.assertEqual(2, len(data), data)
+
+        rules, children = data[0]
+        self.assertEqual(['top1'], rules)
+        crules, cchildren = children[0]
+        self.assertEqual(['nest1'], crules)
+
+        rules, children = data[1]
+        self.assertEqual(['top2'], rules)
+        crules, cchildren = children[0]
+        self.assertEqual(['nest2'], crules)
+
+
 if __name__ == '__main__':
     unittest.main()

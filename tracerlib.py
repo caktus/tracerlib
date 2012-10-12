@@ -29,6 +29,7 @@
 from __future__ import print_function
 
 import sys, os
+import re
 import inspect
 import collections
 import traceback
@@ -513,6 +514,133 @@ class StackTracer(Tracer):
 
     def trace_exception(self, *args, **kwargs):
         self.current.trace_exception(*args, **kwargs)
+
+
+class ConfigLoader(object):
+    """Load a TracerManager and tracers based on a configuration file.
+
+    on:line
+    match:mypackage.*
+    -  on:call
+       match:otherlibrary.somefunction
+       log:args
+    """
+    
+    def __init__(self, tracer=Tracer):
+        self.tracer = tracer
+
+    def load(self, f):
+        data = self._parse(f.read())
+        return self._load(data)
+
+    def loads(self, s):
+        data = self._parse(s)
+        return self._load(data)
+
+    def _load(self, data):
+        manager = TracerManager()
+        tracers = self._load_tracers(data)
+        for t in tracers:
+            manager.add(t)
+        return manager
+
+    def _load_tracers(data, parent=None):
+        try:
+            items = data.items()
+        except AttributeError:
+            def items():
+                for rule in data:
+                    yield rule, []
+        for (rule, children) in items:
+            tracer = self.tracer(watch=[rule], parent=parent)
+            self._load_tracers(children, parent=tracer)
+            yield tracer
+
+    def _parse(self, s):
+        data = []
+        # Format of the data is a series of (rules, children) tuples
+        # rules is a list of strings
+        # children is a nested form of the same structure
+
+        state = {
+            'cur_data': data,
+            'data_stack': [data],
+            'cur_rules': None,      # The current rules being read
+            'cur_children': None,   # The current block's children
+            'indent': 0,
+            'indent_levels': [],
+        }
+
+        def cur_data():
+            return state['cur_data']
+
+        def add_rule(rule):
+            if rule:
+                if state['cur_rules'] is None:
+                    state['cur_rules'] = []
+                    state['cur_children'] = []
+                state['cur_rules'].append(rule)
+
+        def clear_current():
+            state['cur_rules'] = None
+            state['cur_children'] = None
+
+        def add_tracer():
+            if state['cur_rules']:
+                cur_data().append((state['cur_rules'], state['cur_children']))
+            clear_current()
+
+        def start_nest():
+            add_tracer()
+            state['cur_data'] = cur_data()[-1][1]
+            state['data_stack'].append(state['cur_data'])
+
+        def end_nest():
+            done_data = state['data_stack'].pop()
+            state['cur_data'] = state['data_stack'][-1]
+            return done_data
+
+        def indent(i=None):
+            if i:
+                state['indent_levels'].append(i)
+                state['indent'] += i
+            return state['indent']
+
+        def unindent():
+            add_tracer()
+            if state['indent_levels']:
+                state['indent'] -= state['indent_levels'][-1]
+                state['indent_levels'].pop()
+            return indent()
+
+
+        lines = s.split('\n')
+        # START
+        for line in lines:
+            if line.strip() and line[:indent()].strip(' '):
+                # UNNEST
+                # Return to previous indentation
+                unindent()
+                # Stop processing the last block and start a new one
+                # cur_data's parent should now be the rules and children
+                end_nest()
+
+            line = line[indent():]
+            line_indent = len(line) - len(line.lstrip(' '))
+            if line_indent:
+                # NEST - Now adding children to the last block
+                # Add the current block, and make its children current
+                line = line[line_indent:]
+                indent(line_indent)
+                start_nest()
+            if not line.strip():
+                # TERM - End this block of rules, start a new tracer at the same level
+                add_tracer()
+            add_rule(line)
+
+        add_tracer()
+
+        return data
 
 
 _pth = """import sys,tracerlib;tracerlib.addtracer(tracerlib.StackTracer(sys.stderr)) if not tracerlib._global_env_tracer else None;tracerlib._global_env_tracer=True"""

@@ -20,3 +20,9 @@ class A(object):
     def m2(self, x, y):
         pass
 
+def a():
+    b()
+
+def b():
+    pass
+

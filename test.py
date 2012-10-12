@@ -182,6 +182,16 @@ class TracerTestCase(unittest.TestCase):
         self.assertEqual(1, self.mock.call_count)
         self.mock.assert_called_with('v', args=(), kwargs={}, lineno=12)
 
+    def test_incall(self):
+        self.tracer.watch('testmod.a')
+
+        with self.tm:
+            self.assertFalse(self.tracer.incall)
+            def test():
+                self.assertTrue(self.tracer.incall)
+            with mock.patch('testmod.b', test):
+                testmod.a()
+
 
 if __name__ == '__main__':
     unittest.main()

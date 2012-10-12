@@ -294,10 +294,12 @@ class Tracer(object):
     with event-specific arguments.
     """
 
-    def __init__(self, func=None, events=None, watch=None):
+    def __init__(self, func=None, events=None, watch=None, parent=None):
         self.events = None
         self._trace = func
         self._watch = []
+        self.parent = parent
+        self.incall = 0
         if watch is not None:
             self._watch.extend(watch)
 
@@ -362,6 +364,16 @@ class Tracer(object):
             fi = self.frame_insp
             func_name = fi.func_name
             lineno = frame.f_lineno
+
+            # Track incall status
+            if event == 'call':
+                self.incall += 1
+            elif event == 'exception':
+                self.incall -= 1
+            elif event == 'return':
+                self.incall -= 1
+
+            # Call registered trace function
             if self._trace is not None:
                 self._trace(func_name, args=fi.args, kwargs=fi.kwargs, lineno=lineno)
             elif event == 'exception':

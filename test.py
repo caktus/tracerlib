@@ -171,6 +171,17 @@ class TracerTestCase(unittest.TestCase):
             testmod.l(False)
         self.assertEqual(0, self.mock.call_count)
 
+    def test_watch_expression(self):
+        self.tracer.events = ['line']
+        self.tracer.watch('testmod.v')
+        self.tracer.watch('true:a==2')
+
+        with self.tm:
+            testmod.v()
+
+        self.assertEqual(1, self.mock.call_count)
+        self.mock.assert_called_with('v', args=(), kwargs={}, lineno=12)
+
 
 if __name__ == '__main__':
     unittest.main()

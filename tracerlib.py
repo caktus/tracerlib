@@ -320,8 +320,9 @@ class Tracer(object):
             arginfo = fi.all_arg_values()
 
             qn_parts = fi.qual_name.split('.')
-            successes = 0
+            successes = []
             for watch in self._watch:
+                orig_watch = watch
                 failed = False
                 negate = watch[0] == '-'
                 watch = watch[1 if negate else 0:]
@@ -336,6 +337,13 @@ class Tracer(object):
                         failed = True
                 elif rule_type == 'line' and event == 'line':
                     failed = lineno != int(watch)
+                elif rule_type == 'true':
+                    try:
+                        #print('EVAL', repr(watch), 'IN', frame.f_locals)
+                        failed = not eval(watch, frame.f_globals, frame.f_locals)
+                    except Exception, e:
+                        #print('TRACERLIB CONDITION ERROR:', e.__class__.__name__, e)
+                        failed = True
 
                 if negate:
                     failed = not failed
@@ -344,11 +352,11 @@ class Tracer(object):
                 #    print(rule_type, ('-' if negate else '+') + watch, fi.qual_name, 'failed' if failed else 'passed')
 
                 if not failed:
-                    successes += 1
+                    successes.append(orig_watch)
 
-            if successes == len(self._watch):
+            if len(successes) == len(self._watch):
                 if self._trace is not None:
-                    self._trace(func_name, fi.args, fi.kwargs)
+                    self._trace(func_name, args=fi.args, kwargs=fi.kwargs, lineno=lineno)
                 elif event == 'exception':
                     self.trace_exception(func_name, fi.args, fi.kwargs, arg)
                 elif event == 'line':

@@ -292,6 +292,13 @@ class ConfigLoaderTestCase(unittest.TestCase):
         crules, cchildren = children[0]
         self.assertEqual(['nest2'], crules)
 
+    def test_tracers(self):
+        tm = self.loader.loads(UNNESTING)
+
+        self.assertEqual(4, len(tm.tracers))
+        self.assertIs(tm.tracers[0], tm.tracers[1].parent)
+        self.assertIs(tm.tracers[2], tm.tracers[3].parent)
+
 
 if __name__ == '__main__':
     unittest.main()

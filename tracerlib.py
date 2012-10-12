@@ -98,30 +98,29 @@ class TracerManager(object):
     def __init__(self, *tracers):
         self.tracers = list(tracers)
 
-    def add(self, tracer, events=None):
+    def add(self, tracer):
         """Add a tracer function to be managed."""
 
-        self.tracers.append((tracer, events))
+        self.tracers.append(tracer)
 
     def remove(self, tracer):
         """Remove a tracer function."""
 
-        for i, (t, events) in enumerate(self.tracers):
+        for i, t in enumerate(self.tracers):
             if t is tracer:
                 del self.tracers[i]
                 break
 
     def _trace(self, frame, event, arg):
         drop = []
-        for i, (tracer, events) in enumerate(self.tracers):
-            if events is None or event in events:
-                try:
-                    tracer(frame, event, arg)
-                except BaseException as e:
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    print("Failed tracer %r" % (tracer,), file=sys.stderr)
-                    traceback.print_exc()
-                    #drop.append(i)
+        for i, tracer in enumerate(self.tracers):
+            try:
+                tracer(frame, event, arg)
+            except BaseException as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                print("Failed tracer %r" % (tracer,), file=sys.stderr)
+                traceback.print_exc()
+                #drop.append(i)
         drop.reverse()
         for i in drop:
             del self.tracers[i]
@@ -133,7 +132,7 @@ class TracerManager(object):
             _active_managers.append(self)
 
         # We don't need to trace our own exit
-        for (tracer, events) in self.tracers:
+        for tracer in self.tracers:
             if hasattr(tracer, 'watch'):
                 tracer.watch("-match:tracerlib.TracerManager.__exit__")
                 tracer.watch("-match:tracerlib.TracerManager.stop")
@@ -149,7 +148,7 @@ class TracerManager(object):
             _stop_tracing()
 
         # We don't need to trace our own exit
-        for (tracer, events) in self.tracers:
+        for tracer in self.tracers:
             if hasattr(tracer, 'unwatch'):
                 tracer.unwatch("-match:tracerlib.TracerManager.__exit__")
                 tracer.unwatch("-match:tracerlib.TracerManager.stop")
@@ -544,17 +543,12 @@ class ConfigLoader(object):
             manager.add(t)
         return manager
 
-    def _load_tracers(data, parent=None):
-        try:
-            items = data.items()
-        except AttributeError:
-            def items():
-                for rule in data:
-                    yield rule, []
-        for (rule, children) in items:
-            tracer = self.tracer(watch=[rule], parent=parent)
-            self._load_tracers(children, parent=tracer)
+    def _load_tracers(self, data, parent=None):
+        for (rules, children) in data:
+            tracer = self.tracer(watch=rules, parent=parent)
             yield tracer
+            for child in self._load_tracers(children, parent=tracer):
+                yield child
 
     def _parse(self, s):
         data = []

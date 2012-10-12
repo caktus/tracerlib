@@ -312,15 +312,15 @@ class Tracer(object):
     def unwatch(self, path):
         self._watch.remove(path)
 
-    def __call__(self, frame, event, arg):
+    def check_event(self, frame, event, arg):
         lineno = frame.f_lineno
+        successes = []
+        self.frame_insp = fi = FrameInspector(frame)
+        func_name = fi.func_name
         if self.events is None or event in self.events:
-            self.frame_insp = fi = FrameInspector(frame)
-            func_name = fi.func_name
             arginfo = fi.all_arg_values()
 
             qn_parts = fi.qual_name.split('.')
-            successes = []
             for watch in self._watch:
                 orig_watch = watch
                 failed = False
@@ -354,19 +354,25 @@ class Tracer(object):
                 if not failed:
                     successes.append(orig_watch)
 
-            if len(successes) == len(self._watch):
-                if self._trace is not None:
-                    self._trace(func_name, args=fi.args, kwargs=fi.kwargs, lineno=lineno)
-                elif event == 'exception':
-                    self.trace_exception(func_name, fi.args, fi.kwargs, arg)
-                elif event == 'line':
-                    self.trace_line(func_name, lineno)
-                elif event == 'return':
-                    self.trace_return(func_name, arg)
-                elif event == 'call':
-                    self.trace_call(func_name, fi, fi.args, fi.kwargs)
-                else:
-                    getattr(self, 'trace_' + event)(func_name, fi.args, fi.kwargs)
+        return len(successes) == len(self._watch)
+
+    def __call__(self, frame, event, arg):
+        if self.check_event(frame, event, arg):
+            fi = self.frame_insp
+            func_name = fi.func_name
+            lineno = frame.f_lineno
+            if self._trace is not None:
+                self._trace(func_name, args=fi.args, kwargs=fi.kwargs, lineno=lineno)
+            elif event == 'exception':
+                self.trace_exception(func_name, fi.args, fi.kwargs, arg)
+            elif event == 'line':
+                self.trace_line(func_name, lineno)
+            elif event == 'return':
+                self.trace_return(func_name, arg)
+            elif event == 'call':
+                self.trace_call(func_name, fi, fi.args, fi.kwargs)
+            else:
+                getattr(self, 'trace_' + event)(func_name, fi.args, fi.kwargs)
         return self
 
     def trace_call(self, func_name, inspector, args, kwargs):

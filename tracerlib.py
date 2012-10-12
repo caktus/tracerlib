@@ -295,7 +295,7 @@ class Tracer(object):
     """
 
     def __init__(self, func=None, events=None, watch=None, parent=None):
-        self.events = None
+        self.events = events
         self._trace = func
         self._watch = []
         self.parent = parent
@@ -320,6 +320,12 @@ class Tracer(object):
         successes = []
         self.frame_insp = fi = FrameInspector(frame)
         func_name = fi.func_name
+
+        # If we have a parent, only proceed if the parent is in-call
+        if self.parent is not None:
+            if not self.parent.incall:
+                return False
+
         if self.events is None or event in self.events:
             arginfo = fi.all_arg_values()
 

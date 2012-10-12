@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import sys
 import unittest
 import collections
@@ -191,6 +193,22 @@ class TracerTestCase(unittest.TestCase):
                 self.assertTrue(self.tracer.incall)
             with mock.patch('testmod.b', test):
                 testmod.a()
+
+    def test_child_tracer(self):
+        t = mock.Mock()
+        self.tracer.watch('testmod.a')
+        child = tracerlib.Tracer(t, ['call'], ['testmod.b'], parent=self.tracer)
+        self.tm.add(child)
+
+        self.assertEqual(0, t.call_count, 'Tracer called before even enabling!')
+        with self.tm:
+            self.assertEqual(0, t.call_count, 'Tracer called before calling function!')
+            testmod.b()
+            self.assertEqual(0, t.call_count, 'Tracer called when parent was not in-call!')
+
+        with self.tm:
+            testmod.a()
+            self.assertEqual(1, t.call_count)
 
 
 if __name__ == '__main__':

@@ -206,7 +206,7 @@ class FrameInspector(object):
             module = sys.modules['__main__']
 
         try:
-            return getattr(module, self.func_name).func_code is self.frame.f_code
+            return getattr(module, self.func_name).func_code == self.frame.f_code
         except AttributeError:
             return False
 
@@ -223,14 +223,15 @@ class FrameInspector(object):
         lineno = self.frame.f_code.co_firstlineno
         if module:
             source = inspect.getsourcelines(module)[0]
-            class_ = None
+            class_name = None
             def get_indent():
                 return len(source[lineno - 1]) - len(source[lineno - 1].lstrip(' \t'))
             indent = get_indent()
-            while class_ is None and lineno >= 0:
+            # Walk backwards through the source from the current line, looking
+            # for the previous class statement. Assume we're "in" that class.
+            while class_name is None and lineno >= 0:
                 if source[lineno - 1].startswith('class '):
-                    class_ = getattr(module, source[lineno - 1].split('class ', 1)[1].rstrip(':\n').split('(')[0])
-                    class_name = class_.__name__
+                    class_name = source[lineno - 1].split('class ', 1)[1].rstrip(':\n').split('(')[0]
                     break
                 lineno -= 1
             else:
